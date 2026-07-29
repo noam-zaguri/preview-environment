@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preview Env &middot; {{ mr_release_id }}</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #38bdf8;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --ok: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+    header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 1.6rem; margin: 0; }
+    .badge {
+      background: var(--ok); color: #04170a; font-weight: 600;
+      padding: 6px 14px; border-radius: 999px; font-size: 0.85rem;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #04170a; animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .env { color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 28px; }
+    .card { background: var(--card); border-radius: 14px; padding: 18px 20px; border: 1px solid rgba(148,163,184,0.12); }
+    .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+    .value { font-size: 1.1rem; font-family: "SF Mono", Menlo, Consolas, monospace; word-break: break-all; }
+    footer { margin-top: 32px; color: var(--muted); font-size: 0.8rem; text-align: center; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <div class="env">{{ environment }} environment</div>
+        <h1>Preview Environment</h1>
+      </div>
+      <span class="badge"><span class="dot"></span> Live</span>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">MR / Release ID</div>
+        <div class="value">{{ mr_release_id }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Commit SHA</div>
+        <div class="value" title="{{ commit_sha }}">{{ short_sha }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Pod Hostname</div>
+        <div class="value">{{ pod_hostname }}</div>
+      </div>
+      <div class="card">
+        <div class="label">App Version</div>
+        <div class="value">{{ app_version }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Uptime</div>
+        <div class="value" id="uptime">{{ uptime }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Server Time</div>
+        <div class="value">{{ server_time }}</div>
+      </div>
+      {% if mr_title %}
+      <div class="card">
+        <div class="label">MR Title</div>
+        <div class="value">{{ mr_title }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <footer>
+      Health check: <a href="/healthz">/healthz</a> &middot;
+      Metadata API: <a href="/api/meta">/api/meta</a>
+    </footer>
+  </div>
+
+  <script>
+    // Poll the metadata API so the dashboard stays "real-time" without a reload.
+    async function refresh() {
+      try {
+        const res = await fetch('/api/meta', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const secs = data.uptime_seconds;
+        const d = Math.floor(secs / 86400);
+        const h = Math.floor((secs % 86400) / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = secs % 60;
+        let parts = [];
+        if (d) parts.push(d + 'd');
+        if (h || d) parts.push(h + 'h');
+        if (m || h || d) parts.push(m + 'm');
+        parts.push(s + 's');
+        document.getElementById('uptime').textContent = parts.join(' ');
+      } catch (e) { /* ignore transient errors */ }
+    }
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>
