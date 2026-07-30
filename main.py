@@ -58,7 +58,6 @@ from consts import (
 # Metadata collection
 # ---------------------------------------------------------------------------
 
-# Process start time, used to display uptime on the dashboard.
 _START_TIME = time.time()
 
 
@@ -74,7 +73,6 @@ def _get_metadata() -> dict[str, str]:
         "mr_title": os.getenv(ENV_MR_TITLE, DEFAULT_MR_TITLE),
         "app_version": os.getenv(ENV_APP_VERSION, DEFAULT_APP_VERSION),
         "environment": os.getenv(ENV_ENVIRONMENT, DEFAULT_ENVIRONMENT),
-        # In Kubernetes the pod name is exposed as the container hostname.
         "pod_hostname": os.getenv(ENV_HOSTNAME, socket.gethostname()),
     }
 
