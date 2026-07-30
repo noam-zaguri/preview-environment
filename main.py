@@ -33,7 +33,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 
-from constants import (
+from consts import (
     APP_DESCRIPTION,
     APP_TITLE,
     DASHBOARD_TEMPLATE,
