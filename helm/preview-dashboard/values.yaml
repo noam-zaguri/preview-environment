@@ -4,9 +4,14 @@
 replicaCount: 1
 
 image:
-  repository: image-registry.openshift-image-registry.svc:5000/CHANGEME/preview-dashboard
+  repository: ghcr.io/CHANGEME/preview-dashboard
   tag: latest
   pullPolicy: IfNotPresent
+
+# Secret(s) the ServiceAccount uses to pull the image from GHCR (see
+# "Ensure GHCR pull secret exists" in .github/workflows/preview-deploy.yml).
+imagePullSecrets:
+  - name: ghcr-pull-secret
 
 # Port the app listens on inside the container (maps to the PORT env var main.py reads).
 port: 8000

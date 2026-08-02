@@ -32,9 +32,22 @@ jobs:
         run: |
           helm uninstall "$RELEASE_NAME" --namespace "$NAMESPACE" || echo "release not found, skipping"
 
-      - name: Remove pushed images for this PR
+      - name: Remove pushed image tag from GHCR
+        # Best-effort: GHCR_PAT also needs delete:packages for this to work.
+        # Doesn't fail the job if it can't find/delete the version, since the
+        # helm uninstall above is the part that actually matters.
+        continue-on-error: true
         env:
-          REGISTRY: ${{ secrets.OPENSHIFT_REGISTRY }}
+          GH_TOKEN: ${{ secrets.GHCR_PAT }}
         run: |
-          oc delete imagestreamtag "preview-dashboard:${{ github.event.pull_request.head.sha }}" \
-            -n "$NAMESPACE" --ignore-not-found
+          SHA="${{ github.event.pull_request.head.sha }}"
+          PACKAGE=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          for scope in orgs users; do
+            VERSION_ID=$(gh api "/${scope}/$OWNER/packages/container/$PACKAGE/versions" --paginate 2>/dev/null \
+              | jq -r --arg sha "$SHA" '.[] | select(.metadata.container.tags[]? == $sha) | .id' | head -n1)
+            if [ -n "$VERSION_ID" ]; then
+              gh api --method DELETE "/${scope}/$OWNER/packages/container/$PACKAGE/versions/$VERSION_ID"
+              break
+            fi
+          done

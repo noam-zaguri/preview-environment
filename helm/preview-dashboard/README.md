@@ -20,13 +20,14 @@ Helm release (`pr-<number>`) in a shared namespace, torn down when the PR closes
    oc create token preview-ci -n previews --duration=8760h   # -> OPENSHIFT_TOKEN
    ```
 
-3. **Expose the internal image registry** (cluster-admin, one-time, only if not
-   already done on this cluster):
-   ```
-   oc patch configs.imageregistry.operator.openshift.io/cluster \
-     --type merge -p '{"spec":{"defaultRoute":true}}'
-   oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}'
-   ```
+3. **GHCR personal access token** — images are pushed to GitHub Container
+   Registry (`ghcr.io`) and pulled by the cluster from there. The workflow's
+   own `GITHUB_TOKEN` can push (job-scoped, expires when the job ends), but
+   the cluster needs a long-lived credential to pull later, so create a
+   classic PAT with `read:packages` (add `delete:packages` too if you want
+   the cleanup workflow's best-effort image deletion to work) and store it
+   as `GHCR_PAT` below. If the package is private, also make sure that PAT's
+   owner (or the repo) has access to it.
 
 ## GitHub repo configuration
 
@@ -34,7 +35,8 @@ Helm release (`pr-<number>`) in a shared namespace, torn down when the PR closes
 |---|---|---|
 | `OPENSHIFT_SERVER` | secret | cluster API URL, e.g. `https://api.mycluster.example.com:6443` |
 | `OPENSHIFT_TOKEN` | secret | token from the `preview-ci` ServiceAccount above |
-| `OPENSHIFT_REGISTRY` | secret | the exposed registry route host from step 3 |
+| `GHCR_USERNAME` | secret | GitHub username tied to `GHCR_PAT` |
+| `GHCR_PAT` | secret | PAT from step 3, used as the cluster's GHCR pull credential |
 | `OPENSHIFT_NAMESPACE` | variable | `previews` (or whatever you named it in step 1) |
 
 With those set, `.github/workflows/preview-deploy.yml` and
@@ -45,7 +47,7 @@ With those set, `.github/workflows/preview-deploy.yml` and
 ```
 helm upgrade --install pr-test ./helm/preview-dashboard \
   --namespace previews \
-  --set image.repository=image-registry.openshift-image-registry.svc:5000/previews/preview-dashboard \
+  --set image.repository=ghcr.io/<owner>/<repo> \
   --set image.tag=<tag-you-pushed> \
   --set env.mrReleaseId=pr-test
 ```
