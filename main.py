@@ -54,10 +54,6 @@ from consts import (
     TEMPLATES_DIR,
 )
 
-# ---------------------------------------------------------------------------
-# Metadata collection
-# ---------------------------------------------------------------------------
-
 _START_TIME = time.time()
 
 
@@ -95,10 +91,6 @@ def _format_uptime(seconds: int) -> str:
     parts.append(f"{secs}s")
     return " ".join(parts)
 
-
-# ---------------------------------------------------------------------------
-# FastAPI application
-# ---------------------------------------------------------------------------
 
 app = FastAPI(
     title=APP_TITLE,
