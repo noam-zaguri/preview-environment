@@ -1,0 +1,101 @@
+name: Deploy PR preview
+
+# Prerequisites (see helm/preview-dashboard/README.md):
+#   - repo secrets: OPENSHIFT_SERVER, OPENSHIFT_TOKEN, OPENSHIFT_REGISTRY
+#   - repo variable: OPENSHIFT_NAMESPACE
+#   - the OPENSHIFT_TOKEN's user needs "admin" role (not just "edit") on
+#     OPENSHIFT_NAMESPACE, since the chart creates a Role/RoleBinding per release
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  RELEASE_NAME: pr-${{ github.event.pull_request.number }}
+  NAMESPACE: ${{ vars.OPENSHIFT_NAMESPACE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install oc CLI
+        uses: redhat-actions/openshift-tools-installer@v1
+        with:
+          oc: "4"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to OpenShift
+        run: |
+          oc login --token="${{ secrets.OPENSHIFT_TOKEN }}" --server="${{ secrets.OPENSHIFT_SERVER }}"
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ secrets.OPENSHIFT_REGISTRY }}
+        run: |
+          IMAGE="$REGISTRY/$NAMESPACE/preview-dashboard:${{ github.sha }}"
+          oc whoami -t | docker login -u unused --password-stdin "$REGISTRY"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Render per-PR values
+        env:
+          MR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Helm accepts JSON as valid YAML, so plain json.dumps (stdlib, no
+          # extra deps, safe escaping of the free-form MR title) is enough.
+          python3 - <<'PY'
+          import json
+          import os
+
+          sha = os.environ["GITHUB_SHA"]
+          values = {
+              "image": {
+                  "repository": f"image-registry.openshift-image-registry.svc:5000/{os.environ['NAMESPACE']}/preview-dashboard",
+                  "tag": sha,
+              },
+              "env": {
+                  "commitSha": sha,
+                  "mrReleaseId": os.environ["RELEASE_NAME"],
+                  "mrTitle": os.environ["MR_TITLE"],
+                  "appVersion": sha,
+              },
+          }
+          with open("pr-values.json", "w") as f:
+              json.dump(values, f)
+          PY
+
+      - name: Helm upgrade --install
+        run: |
+          helm upgrade --install "$RELEASE_NAME" ./helm/preview-dashboard \
+            --namespace "$NAMESPACE" \
+            -f pr-values.json \
+            --wait --timeout 5m
+
+      - name: Get preview URL
+        id: url
+        run: |
+          HOST=$(oc get route "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.host}')
+          echo "url=https://$HOST" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `Preview environment deployed: ${{ steps.url.outputs.url }}`,
+            });
