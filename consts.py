@@ -23,6 +23,18 @@ DEFAULT_POD_NAMESPACE = "default"
 # Pod phases considered healthy for the preview-environment pod check.
 POD_HEALTHY_PHASES = {"Running"}
 
+# Label other projects' pods must carry (in this dashboard's namespace) to be
+# discovered and shown on the dashboard. See tracked_pods.py.
+TRACKED_LABEL_SELECTOR = "preview.dashboard/tracked=true"
+
+# Annotation keys other projects may set on their pods for richer display.
+# Any of them missing just falls back to "unknown"/"" per pod.
+ANN_APP = "preview.dashboard/app"
+ANN_COMMIT_SHA = "preview.dashboard/commit-sha"
+ANN_RELEASE_ID = "preview.dashboard/release-id"
+ANN_TITLE = "preview.dashboard/title"
+ANN_VERSION = "preview.dashboard/version"
+
 # FastAPI app metadata.
 APP_TITLE = "Preview Environment Dashboard"
 APP_DESCRIPTION = "Live metadata for an on-demand Kubernetes preview environment."

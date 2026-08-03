@@ -1,0 +1,59 @@
+# Rename this chart (directory + Chart.yaml "name") to your actual app name
+# before use. CI overrides image.repository/tag and tracking.* per PR.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/CHANGEME/sample-app
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+# - name: ghcr-pull-secret   # only needed if this app's package is private
+
+port: 8080
+
+service:
+  port: 8080
+
+# Optional: expose an OpenShift Route so you can click into this specific
+# PR's running app directly, not just see its status on the dashboard.
+route:
+  enabled: true
+  host: ""
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# This is the contract the central preview-environment dashboard reads.
+# See its helm/preview-dashboard/README.md for the full field list.
+tracking:
+  enabled: true
+  app: "sample-app"
+  releaseId: ""
+  commitSha: ""
+  title: ""
+  version: ""
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 3
+  periodSeconds: 5

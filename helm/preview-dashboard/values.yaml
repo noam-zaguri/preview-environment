@@ -1,5 +1,7 @@
 # Default values for the preview-dashboard chart.
-# Per-MR CI runs override image.repository/tag and env.* via -f <generated-values-file>.
+# CI overrides image.repository/tag and env.* via -f <generated-values-file>
+# and installs this as a single, permanent "preview-environment" release
+# (see .github/workflows/deploy-dashboard.yml) rather than one per PR.
 
 replicaCount: 1
 
@@ -9,7 +11,7 @@ image:
   pullPolicy: IfNotPresent
 
 # Secret(s) the ServiceAccount uses to pull the image from GHCR (see
-# "Ensure GHCR pull secret exists" in .github/workflows/preview-deploy.yml).
+# "Ensure GHCR pull secret exists" in .github/workflows/deploy-dashboard.yml).
 imagePullSecrets:
   - name: ghcr-pull-secret
 
@@ -37,8 +39,9 @@ resources:
     cpu: 200m
     memory: 128Mi
 
-# Metadata surfaced on the dashboard (see consts.py for the env var names).
-# CI fills these in per MR; empty strings fall back to the app's own defaults.
+# Metadata surfaced on the dashboard's own cards (see consts.py for the env
+# var names). CI fills these in; empty strings fall back to the app's own
+# defaults.
 env:
   commitSha: ""
   mrReleaseId: ""
@@ -50,8 +53,9 @@ serviceAccount:
   create: true
   name: ""
 
-# Grants the pod's ServiceAccount permission to read its own pod status,
-# required by the /pod-status endpoint (see get_pod_status.py).
+# Grants the pod's ServiceAccount "get" (for /pod-status, its own pod) and
+# "list" (for /api/pods, discovering other tracked pods) on pods in this
+# namespace. See get_pod_status.py and tracked_pods.py.
 podStatusRbac:
   enabled: true
 

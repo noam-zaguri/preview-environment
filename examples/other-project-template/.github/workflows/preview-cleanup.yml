@@ -1,0 +1,37 @@
+name: Tear down PR preview
+
+# Copy into your own app's repo alongside preview-deploy.yml. Runs whenever
+# the PR closes (merged or not) and removes the preview pod so it stops
+# showing up on the central dashboard.
+
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_NAME: pr-${{ github.event.pull_request.number }}
+  NAMESPACE: ${{ vars.OPENSHIFT_NAMESPACE }}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install oc CLI
+        uses: redhat-actions/openshift-tools-installer@v1
+        with:
+          oc: "4"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to OpenShift
+        run: |
+          oc login --token="${{ secrets.OPENSHIFT_TOKEN }}" --server="${{ secrets.OPENSHIFT_SERVER }}"
+
+      - name: Helm uninstall
+        run: |
+          helm uninstall "$RELEASE_NAME" --namespace "$NAMESPACE" || echo "release not found, skipping"
