@@ -2,12 +2,17 @@
 Preview Environment Dashboard
 =============================
 
-A small FastAPI web server intended to run inside an on-demand, per-Merge-Request
-preview environment on Kubernetes.
+A small FastAPI web server that runs as a single, permanent "preview-environment"
+deployment on Kubernetes/OpenShift, and acts as the central status page for every
+OTHER preview pod running in its namespace (deliberately not deployed per-MR
+itself, since a pod can't tell you it's down if the dashboard is on that same pod).
 
 It serves:
-  * GET /            -> a visual HTML dashboard showing live pod / release metadata
-  * GET /api/meta    -> the same metadata as JSON (handy for scripts / debugging)
+  * GET /            -> a visual HTML dashboard showing this pod's own metadata,
+                         plus a live table of every other tracked preview pod
+  * GET /api/meta    -> this pod's own metadata as JSON (handy for scripts / debugging)
+  * GET /api/pods    -> JSON list of other preview pods this dashboard tracks
+                         (see tracked_pods.py for the label/annotation contract)
   * GET /healthz     -> Kubernetes liveness/readiness probe (returns 200 "ok")
   * GET /pod-status  -> queries the Kubernetes API and reports whether this pod is
                          actually Running (200) or not, e.g. Failed/Pending (503)
@@ -56,6 +61,7 @@ from consts import (
     TEMPLATES_DIR,
 )
 from get_pod_status import get_pod_status
+from tracked_pods import list_tracked_pods
 from uptime import format_uptime, uptime_seconds
 
 
@@ -113,6 +119,12 @@ def api_meta() -> JSONResponse:
     meta["uptime_seconds"] = uptime_seconds()
     meta["server_time_utc"] = datetime.now(timezone.utc).isoformat()
     return JSONResponse(meta)
+
+
+@app.get("/api/pods")
+def api_pods() -> JSONResponse:
+    """List other preview pods this dashboard tracks (see tracked_pods.py)."""
+    return JSONResponse(list_tracked_pods())
 
 
 @app.get("/", response_class=HTMLResponse)

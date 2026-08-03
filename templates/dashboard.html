@@ -52,6 +52,17 @@
     }
     .pod-badge.healthy { background: var(--ok); color: #04170a; }
     .pod-badge.unhealthy { background: var(--bad); color: #2a0505; }
+    section.tracked { margin-top: 36px; }
+    section.tracked h2 { font-size: 1.1rem; margin: 0 0 12px; }
+    .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid rgba(148,163,184,0.12); }
+    table.pods-table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 0.9rem; }
+    table.pods-table th, table.pods-table td { padding: 10px 14px; text-align: left; white-space: nowrap; }
+    table.pods-table th {
+      color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+      border-bottom: 1px solid rgba(148,163,184,0.12);
+    }
+    table.pods-table tbody tr:not(:last-child) td { border-bottom: 1px solid rgba(148,163,184,0.08); }
+    table.pods-table td.empty { color: var(--muted); white-space: normal; }
   </style>
 </head>
 <body>
@@ -101,6 +112,27 @@
       </div>
       {% endif %}
     </div>
+
+    <section class="tracked">
+      <h2>Tracked Preview Pods</h2>
+      <div id="pods-error" class="label" style="display:none; margin-bottom: 8px;"></div>
+      <div class="table-wrap">
+        <table class="pods-table">
+          <thead>
+            <tr>
+              <th>App</th>
+              <th>Release</th>
+              <th>Commit</th>
+              <th>Status</th>
+              <th>Pod</th>
+            </tr>
+          </thead>
+          <tbody id="pods-tbody">
+            <tr><td class="empty" colspan="5">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
     <footer>
       Health check: <a href="/healthz">/healthz</a> &middot;
@@ -164,6 +196,70 @@
         btn.textContent = 'Check pod status';
       }
     }
+
+    async function refreshTrackedPods() {
+      const tbody = document.getElementById('pods-tbody');
+      const errBox = document.getElementById('pods-error');
+      try {
+        const res = await fetch('/api/pods', { cache: 'no-store' });
+        const data = await res.json();
+
+        if (data.error) {
+          errBox.textContent = data.error;
+          errBox.style.display = 'block';
+        } else {
+          errBox.style.display = 'none';
+        }
+
+        const pods = data.pods || [];
+        tbody.replaceChildren();
+
+        if (pods.length === 0) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.className = 'empty';
+          td.colSpan = 5;
+          td.textContent = 'No tracked pods yet.';
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+
+        for (const pod of pods) {
+          const tr = document.createElement('tr');
+
+          const appTd = document.createElement('td');
+          appTd.textContent = pod.app;
+          tr.appendChild(appTd);
+
+          const releaseTd = document.createElement('td');
+          releaseTd.textContent = pod.release_id;
+          tr.appendChild(releaseTd);
+
+          const commitTd = document.createElement('td');
+          commitTd.textContent = typeof pod.commit_sha === 'string' ? pod.commit_sha.slice(0, 12) : pod.commit_sha;
+          tr.appendChild(commitTd);
+
+          const statusTd = document.createElement('td');
+          const badge = document.createElement('span');
+          badge.className = 'pod-badge ' + (pod.healthy ? 'healthy' : 'unhealthy');
+          badge.textContent = (pod.healthy ? '✓ ' : '✗ ') + pod.phase;
+          statusTd.appendChild(badge);
+          tr.appendChild(statusTd);
+
+          const podTd = document.createElement('td');
+          podTd.textContent = pod.pod_name;
+          tr.appendChild(podTd);
+
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        errBox.textContent = 'Failed to reach /api/pods';
+        errBox.style.display = 'block';
+      }
+    }
+    refreshTrackedPods();
+    setInterval(refreshTrackedPods, 5000);
   </script>
 </body>
 </html>

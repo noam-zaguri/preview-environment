@@ -1,30 +1,34 @@
-name: Deploy PR preview
+name: Deploy preview-environment dashboard
 
 # Prerequisites (see helm/preview-dashboard/README.md):
 #   - repo secrets: OPENSHIFT_SERVER, OPENSHIFT_TOKEN, GHCR_USERNAME, GHCR_PAT
 #   - repo variable: OPENSHIFT_NAMESPACE
 #   - the OPENSHIFT_TOKEN's user needs "admin" role (not just "edit") on
-#     OPENSHIFT_NAMESPACE, since the chart creates a Role/RoleBinding per release
+#     OPENSHIFT_NAMESPACE, since the chart creates a Role/RoleBinding
 #   - GHCR_PAT is a personal access token with read:packages, used as a
 #     long-lived credential the cluster can pull images with (the ephemeral
 #     GITHUB_TOKEN only lives for the duration of this job, so it can push
 #     but can't be used later by the cluster to pull)
+#
+# This is a single, permanent release (not spun up per PR): it's the central
+# view of every OTHER preview pod in the namespace, via /api/pods, so it needs
+# to stay running even when some other preview pod is down.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
 
 concurrency:
-  group: preview-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: preview-environment-deploy
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  pull-requests: write
   packages: write
 
 env:
-  RELEASE_NAME: pr-${{ github.event.pull_request.number }}
+  RELEASE_NAME: preview-environment
   NAMESPACE: ${{ vars.OPENSHIFT_NAMESPACE }}
 
 jobs:
@@ -68,12 +72,10 @@ jobs:
             -n "$NAMESPACE" \
             --dry-run=client -o yaml | oc apply -f -
 
-      - name: Render per-PR values
-        env:
-          MR_TITLE: ${{ github.event.pull_request.title }}
+      - name: Render values
         run: |
           # Helm accepts JSON as valid YAML, so plain json.dumps (stdlib, no
-          # extra deps, safe escaping of the free-form MR title) is enough.
+          # extra deps) is enough here.
           python3 - <<'PY'
           import json
           import os
@@ -87,11 +89,11 @@ jobs:
               "env": {
                   "commitSha": sha,
                   "mrReleaseId": os.environ["RELEASE_NAME"],
-                  "mrTitle": os.environ["MR_TITLE"],
                   "appVersion": sha,
+                  "environment": "production",
               },
           }
-          with open("pr-values.json", "w") as f:
+          with open("dashboard-values.json", "w") as f:
               json.dump(values, f)
           PY
 
@@ -99,22 +101,10 @@ jobs:
         run: |
           helm upgrade --install "$RELEASE_NAME" ./helm/preview-dashboard \
             --namespace "$NAMESPACE" \
-            -f pr-values.json \
+            -f dashboard-values.json \
             --wait --timeout 5m
 
-      - name: Get preview URL
-        id: url
+      - name: Print dashboard URL
         run: |
           HOST=$(oc get route "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.host}')
-          echo "url=https://$HOST" >> "$GITHUB_OUTPUT"
-
-      - name: Comment preview URL on PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `Preview environment deployed: ${{ steps.url.outputs.url }}`,
-            });
+          echo "### Dashboard deployed: https://$HOST" >> "$GITHUB_STEP_SUMMARY"
