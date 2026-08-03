@@ -34,8 +34,10 @@ resources:
     cpu: 200m
     memory: 256Mi
 
-# This is the contract the central preview-environment dashboard reads.
-# See its helm/preview-dashboard/README.md for the full field list.
+# The dashboard discovers this pod by NAME (must contain a "pr-<number>"
+# segment -- the CI workflow's release name, e.g. "pr-42", already satisfies
+# this). These annotations are optional extra metadata for richer display;
+# see helm/preview-dashboard/README.md for the full field list.
 tracking:
   enabled: true
   app: "sample-app"

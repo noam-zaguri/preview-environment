@@ -8,12 +8,15 @@ the dashboard was running on that same pod.
 
 ## How other projects show up on the dashboard
 
-Any pod in the shared namespace gets picked up automatically if it carries
-this label:
-
-```
-preview.dashboard/tracked: "true"
-```
+Any pod in the shared namespace gets picked up automatically **just by its
+name** — no label, no registration call. A pod is tracked if its name
+contains a `pr-<number>` segment, e.g. `test-app-pr-4`, `pr-9`,
+`checkout-api-pr-42-7f8c9d6b5-abcde`. This matches the release naming
+convention (`helm upgrade --install pr-<number> ...` or
+`<app>-pr-<number>`), not a bare `"pr"` substring — so it won't pick up things
+like `prometheus-xyz`, `printer-service`, or the dashboard's own
+`preview-environment-xxxxx` pod (see `TRACKED_POD_NAME_PATTERN` in
+`consts.py`, enforced by `tracked_pods.py`).
 
 Add these annotations too for richer display (all optional — missing ones
 just fall back to "unknown" or the bare pod name):
@@ -30,8 +33,7 @@ Example, from another project's own Deployment manifest:
 
 ```yaml
 metadata:
-  labels:
-    preview.dashboard/tracked: "true"
+  name: checkout-api-pr-42   # <- the "pr-42" segment is what gets it tracked
   annotations:
     preview.dashboard/app: "checkout-api"
     preview.dashboard/release-id: "pr-42"
@@ -39,8 +41,7 @@ metadata:
     preview.dashboard/version: "a1b2c3d"
 ```
 
-No registration call, no extra service to run — the dashboard polls the
-Kubernetes API for this label on a timer (`GET /api/pods`, see
+The dashboard polls the Kubernetes API on a timer (`GET /api/pods`, see
 `tracked_pods.py`), so a newly deployed pod just appears within a few seconds
 of going `Running`.
 

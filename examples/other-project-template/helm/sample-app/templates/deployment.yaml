@@ -13,9 +13,6 @@ spec:
     metadata:
       labels:
         {{- include "sample-app.selectorLabels" . | nindent 8 }}
-        {{- if .Values.tracking.enabled }}
-        preview.dashboard/tracked: "true"
-        {{- end }}
       {{- if .Values.tracking.enabled }}
       annotations:
         preview.dashboard/app: {{ .Values.tracking.app | quote }}

@@ -7,7 +7,7 @@ metadata:
     {{- include "preview-dashboard.labels" . | nindent 4 }}
 rules:
   # "get" is for the /pod-status self-check; "list" is for /api/pods, which
-  # discovers OTHER preview pods via a label selector (see tracked_pods.py).
+  # discovers OTHER preview pods by name pattern (see tracked_pods.py).
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list"]

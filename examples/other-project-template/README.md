@@ -33,12 +33,18 @@ helm/sample-app/          -> rename to helm/<your-app-name>/
 
 ## The part that makes it show up on the dashboard
 
-`templates/deployment.yaml` in this chart puts a label and annotations on the
-**pod template** (not just the Deployment):
+The dashboard discovers pods **by name**, not by label — no registration
+call, no extra service. A pod is tracked if its name contains a
+`pr-<number>` segment. The workflow here already deploys as release
+`pr-<number>` (see `RELEASE_NAME` in `preview-deploy.yml`), and Helm names
+every resource after the release, so this "just works" as long as you don't
+override that naming.
+
+`templates/deployment.yaml` in this chart also sets annotations on the
+**pod template** for richer display (optional — a bare `pr-<number>` name
+with no annotations still shows up, just with less detail):
 
 ```yaml
-labels:
-  preview.dashboard/tracked: "true"
 annotations:
   preview.dashboard/app: "<your-app-name>"
   preview.dashboard/release-id: "pr-<number>"
@@ -47,8 +53,7 @@ annotations:
   preview.dashboard/version: "<git-sha>"
 ```
 
-The dashboard polls the Kubernetes API for that label in its own namespace —
-no registration call, no extra service. Once your pod goes `Running`, it
-appears in the dashboard's "Tracked Preview Pods" table within a few seconds.
-When `preview-cleanup.yml` runs `helm uninstall` on PR close, the pod is gone
-and it just stops appearing on the next poll.
+Once your pod goes `Running`, it appears in the dashboard's "Tracked Preview
+Pods" table within a few seconds. When `preview-cleanup.yml` runs
+`helm uninstall` on PR close, the pod is gone and it just stops appearing on
+the next poll.

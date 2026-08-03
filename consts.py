@@ -23,9 +23,12 @@ DEFAULT_POD_NAMESPACE = "default"
 # Pod phases considered healthy for the preview-environment pod check.
 POD_HEALTHY_PHASES = {"Running"}
 
-# Label other projects' pods must carry (in this dashboard's namespace) to be
-# discovered and shown on the dashboard. See tracked_pods.py.
-TRACKED_LABEL_SELECTOR = "preview.dashboard/tracked=true"
+# A pod in this dashboard's namespace is treated as a tracked preview pod if
+# its name contains a "pr-<number>" segment (e.g. "test-app-pr-4", "pr-9") --
+# matching this release-naming convention, not a bare "pr" substring, so it
+# doesn't also catch things like "prometheus-xyz" or this dashboard's own
+# "preview-environment-xxxxx" pod. See tracked_pods.py.
+TRACKED_POD_NAME_PATTERN = r"(?:^|-)pr-\d+(?:-|$)"
 
 # Annotation keys other projects may set on their pods for richer display.
 # Any of them missing just falls back to "unknown"/"" per pod.
