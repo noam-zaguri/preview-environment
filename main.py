@@ -6,18 +6,21 @@ A small FastAPI web server intended to run inside an on-demand, per-Merge-Reques
 preview environment on Kubernetes.
 
 It serves:
-  * GET /          -> a visual HTML dashboard showing live pod / release metadata
-  * GET /api/meta  -> the same metadata as JSON (handy for scripts / debugging)
-  * GET /healthz   -> Kubernetes liveness/readiness probe (returns 200 "ok")
+  * GET /            -> a visual HTML dashboard showing live pod / release metadata
+  * GET /api/meta    -> the same metadata as JSON (handy for scripts / debugging)
+  * GET /healthz     -> Kubernetes liveness/readiness probe (returns 200 "ok")
+  * GET /pod-status  -> queries the Kubernetes API and reports whether this pod is
+                         actually Running (200) or not, e.g. Failed/Pending (503)
 
 All metadata is read from environment variables that the CI/CD pipeline is
 expected to inject into the pod (e.g. via the Deployment spec or a ConfigMap):
 
-  COMMIT_SHA     git commit the image was built from
-  MR_RELEASE_ID  merge-request / release identifier for this preview env
-  MR_TITLE       human-readable MR title (optional)
-  APP_VERSION    application version / image tag (optional)
-  ENVIRONMENT    logical environment name (defaults to "preview")
+  COMMIT_SHA      git commit the image was built from
+  MR_RELEASE_ID   merge-request / release identifier for this preview env
+  MR_TITLE        human-readable MR title (optional)
+  APP_VERSION     application version / image tag (optional)
+  ENVIRONMENT     logical environment name (defaults to "preview")
+  POD_NAMESPACE   namespace this pod runs in, used by /pod-status (defaults to "default")
 
 The pod hostname is read from the OS and reflects the Kubernetes pod name.
 """
@@ -26,14 +29,13 @@ from __future__ import annotations
 
 import os
 import socket
-import time
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 
-from constants import (
+from consts import (
     APP_DESCRIPTION,
     APP_TITLE,
     DASHBOARD_TEMPLATE,
@@ -53,13 +55,8 @@ from constants import (
     ENV_RELOAD,
     TEMPLATES_DIR,
 )
-
-# ---------------------------------------------------------------------------
-# Metadata collection
-# ---------------------------------------------------------------------------
-
-# Process start time, used to display uptime on the dashboard.
-_START_TIME = time.time()
+from get_pod_status import get_pod_status
+from uptime import format_uptime, uptime_seconds
 
 
 def _get_metadata() -> dict[str, str]:
@@ -74,33 +71,9 @@ def _get_metadata() -> dict[str, str]:
         "mr_title": os.getenv(ENV_MR_TITLE, DEFAULT_MR_TITLE),
         "app_version": os.getenv(ENV_APP_VERSION, DEFAULT_APP_VERSION),
         "environment": os.getenv(ENV_ENVIRONMENT, DEFAULT_ENVIRONMENT),
-        # In Kubernetes the pod name is exposed as the container hostname.
         "pod_hostname": os.getenv(ENV_HOSTNAME, socket.gethostname()),
     }
 
-
-def _uptime_seconds() -> int:
-    return int(time.time() - _START_TIME)
-
-
-def _format_uptime(seconds: int) -> str:
-    minutes, secs = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    days, hours = divmod(hours, 24)
-    parts = []
-    if days:
-        parts.append(f"{days}d")
-    if hours or days:
-        parts.append(f"{hours}h")
-    if minutes or hours or days:
-        parts.append(f"{minutes}m")
-    parts.append(f"{secs}s")
-    return " ".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# FastAPI application
-# ---------------------------------------------------------------------------
 
 app = FastAPI(
     title=APP_TITLE,
@@ -121,11 +94,23 @@ def healthz() -> PlainTextResponse:
     return PlainTextResponse("ok", status_code=200)
 
 
+@app.get("/pod-status")
+def pod_status() -> JSONResponse:
+    """Report whether the preview-environment pod is Running (and not e.g. Failed/Pending).
+
+    Unlike /healthz, this actually queries the Kubernetes API for the pod's
+    phase rather than just confirming the FastAPI process is up.
+    """
+    status = get_pod_status()
+    status_code = 200 if status["healthy"] else 503
+    return JSONResponse(status, status_code=status_code)
+
+
 @app.get("/api/meta")
 def api_meta() -> JSONResponse:
     """Return the environment metadata as JSON."""
     meta = _get_metadata()
-    meta["uptime_seconds"] = _uptime_seconds()
+    meta["uptime_seconds"] = uptime_seconds()
     meta["server_time_utc"] = datetime.now(timezone.utc).isoformat()
     return JSONResponse(meta)
 
@@ -147,7 +132,7 @@ def dashboard(request: Request) -> HTMLResponse:
         "pod_hostname": meta["pod_hostname"],
         "app_version": meta["app_version"],
         "mr_title": meta["mr_title"],
-        "uptime": _format_uptime(_uptime_seconds()),
+        "uptime": format_uptime(uptime_seconds()),
         "server_time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
     return templates.TemplateResponse(request, DASHBOARD_TEMPLATE, context)

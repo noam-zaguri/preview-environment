@@ -12,6 +12,7 @@
       --text: #e2e8f0;
       --muted: #94a3b8;
       --ok: #22c55e;
+      --bad: #ef4444;
     }
     * { box-sizing: border-box; }
     body {
@@ -38,6 +39,19 @@
     .value { font-size: 1.1rem; font-family: "SF Mono", Menlo, Consolas, monospace; word-break: break-all; }
     footer { margin-top: 32px; color: var(--muted); font-size: 0.8rem; text-align: center; }
     a { color: var(--accent); }
+    .check-btn {
+      background: var(--accent); color: #04170a; font-weight: 600; border: none;
+      padding: 6px 14px; border-radius: 8px; font-size: 0.85rem; cursor: pointer;
+      margin-top: 4px;
+    }
+    .check-btn:disabled { opacity: 0.6; cursor: default; }
+    .pod-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+      margin-top: 8px;
+    }
+    .pod-badge.healthy { background: var(--ok); color: #04170a; }
+    .pod-badge.unhealthy { background: var(--bad); color: #2a0505; }
   </style>
 </head>
 <body>
@@ -75,6 +89,11 @@
         <div class="label">Server Time</div>
         <div class="value">{{ server_time }}</div>
       </div>
+      <div class="card">
+        <div class="label">Pod Status</div>
+        <button class="check-btn" id="pod-status-btn" onclick="checkPodStatus()">Check pod status</button>
+        <div id="pod-status-result"></div>
+      </div>
       {% if mr_title %}
       <div class="card">
         <div class="label">MR Title</div>
@@ -110,6 +129,41 @@
       } catch (e) { /* ignore transient errors */ }
     }
     setInterval(refresh, 1000);
+
+    async function checkPodStatus() {
+      const btn = document.getElementById('pod-status-btn');
+      const result = document.getElementById('pod-status-result');
+      btn.disabled = true;
+      btn.textContent = 'Checking...';
+      try {
+        const res = await fetch('/pod-status', { cache: 'no-store' });
+        const data = await res.json();
+        const healthy = data.healthy === true;
+
+        result.replaceChildren();
+        const badge = document.createElement('span');
+        badge.className = 'pod-badge ' + (healthy ? 'healthy' : 'unhealthy');
+        badge.textContent = (healthy ? '✓ ' : '✗ ') + (data.phase || 'Unknown');
+        result.appendChild(badge);
+
+        if (data.error) {
+          const errLine = document.createElement('div');
+          errLine.className = 'label';
+          errLine.style.marginTop = '6px';
+          errLine.textContent = data.error;
+          result.appendChild(errLine);
+        }
+      } catch (e) {
+        result.replaceChildren();
+        const badge = document.createElement('span');
+        badge.className = 'pod-badge unhealthy';
+        badge.textContent = '✗ Request failed';
+        result.appendChild(badge);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Check pod status';
+      }
+    }
   </script>
 </body>
 </html>

@@ -9,6 +9,7 @@ ENV_ENVIRONMENT = "ENVIRONMENT"
 ENV_HOSTNAME = "HOSTNAME"
 ENV_PORT = "PORT"
 ENV_RELOAD = "RELOAD"
+ENV_POD_NAMESPACE = "POD_NAMESPACE"
 
 # Fallback values used when the corresponding env var is not set.
 DEFAULT_COMMIT_SHA = "unknown"
@@ -17,6 +18,10 @@ DEFAULT_MR_TITLE = ""
 DEFAULT_APP_VERSION = "dev"
 DEFAULT_ENVIRONMENT = "preview"
 DEFAULT_PORT = "8000"
+DEFAULT_POD_NAMESPACE = "default"
+
+# Pod phases considered healthy for the preview-environment pod check.
+POD_HEALTHY_PHASES = {"Running"}
 
 # FastAPI app metadata.
 APP_TITLE = "Preview Environment Dashboard"
