@@ -72,6 +72,21 @@ jobs:
             -n "$NAMESPACE" \
             --dry-run=client -o yaml | oc apply -f -
 
+      - name: Ensure ServiceAccount exists and has the pull secret linked
+        # Must happen BEFORE `helm upgrade --install`, since the Deployment
+        # it creates schedules pods against this ServiceAccount immediately.
+        # Done imperatively (not templated in the chart) because OpenShift's
+        # own service-account-controller also manages .imagePullSecrets on
+        # every ServiceAccount, and having Helm declare/own that same field
+        # causes an apply conflict with that controller on every upgrade.
+        # Both commands are idempotent -- safe to run on every deploy, and
+        # Helm's own (imagePullSecrets-free) ServiceAccount template just
+        # applies on top of this without touching that field.
+        run: |
+          oc create serviceaccount "$RELEASE_NAME" -n "$NAMESPACE" \
+            --dry-run=client -o yaml | oc apply -f -
+          oc secrets link "$RELEASE_NAME" ghcr-pull-secret --for=pull -n "$NAMESPACE"
+
       - name: Render values
         run: |
           # Helm accepts JSON as valid YAML, so plain json.dumps (stdlib, no

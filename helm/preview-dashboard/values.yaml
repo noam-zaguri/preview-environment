@@ -10,10 +10,10 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
-# Secret(s) the ServiceAccount uses to pull the image from GHCR (see
-# "Ensure GHCR pull secret exists" in .github/workflows/deploy-dashboard.yml).
-imagePullSecrets:
-  - name: ghcr-pull-secret
+# The GHCR pull secret is attached to the ServiceAccount imperatively via
+# `oc secrets link` in deploy-dashboard.yml, NOT declared here -- see the
+# comment in templates/serviceaccount.yaml for why (avoids a field-ownership
+# conflict with OpenShift's own service-account-controller).
 
 # Port the app listens on inside the container (maps to the PORT env var main.py reads).
 port: 8000
