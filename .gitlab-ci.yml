@@ -1,0 +1,98 @@
+# GitLab CI/CD equivalent of .github/workflows/deploy-dashboard.yml.
+# Deploys the single, permanent "preview-environment" release on every push
+# to the default branch (main). Any pipeline can also be re-run manually from
+# the GitLab UI ("Run pipeline"), which covers the same use case as GitHub's
+# workflow_dispatch.
+#
+# Prerequisites (see helm/preview-dashboard/README.md):
+#   CI/CD variables (Settings > CI/CD > Variables):
+#     - OPENSHIFT_SERVER, OPENSHIFT_TOKEN  (masked; token needs "admin" role,
+#       not just "edit", on OPENSHIFT_NAMESPACE -- the chart creates a
+#       Role/RoleBinding)
+#     - OPENSHIFT_NAMESPACE
+#     - REGISTRY_PULL_USERNAME, REGISTRY_PULL_TOKEN -- from a project Deploy
+#       Token (Settings > Repository > Deploy tokens) scoped to
+#       read_registry. Needed because the job's own $CI_REGISTRY_PASSWORD
+#       (the CI job token) only lives for the duration of the job, so it
+#       can push the image here but can't be used later by the cluster to
+#       pull it.
+#
+# This is a single, permanent release (not spun up per MR): it's the central
+# view of every OTHER preview pod in the namespace, via /api/pods, so it needs
+# to stay running even when some other preview pod is down.
+
+stages:
+  - build
+  - deploy
+
+variables:
+  RELEASE_NAME: preview-environment
+
+build:
+  stage: build
+  image: docker:26
+  services:
+    - docker:26-dind
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+deploy:
+  stage: deploy
+  image: python:3.11-slim
+  # Ensures only one dashboard deploy runs at a time; a second one queues
+  # instead of canceling the first -- the GitLab equivalent of the GitHub
+  # workflow's `concurrency: { group: ..., cancel-in-progress: false }`.
+  resource_group: preview-environment-deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl tar gzip ca-certificates >/dev/null
+    - curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz -o /tmp/oc.tar.gz
+    - tar -xzf /tmp/oc.tar.gz -C /usr/local/bin oc
+    - curl -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >/dev/null
+    - oc login --token="$OPENSHIFT_TOKEN" --server="$OPENSHIFT_SERVER"
+  script:
+    - oc create secret docker-registry gitlab-pull-secret
+        --docker-server="$CI_REGISTRY"
+        --docker-username="$REGISTRY_PULL_USERNAME"
+        --docker-password="$REGISTRY_PULL_TOKEN"
+        -n "$OPENSHIFT_NAMESPACE" --dry-run=client -o yaml | oc apply -f -
+    # Must happen BEFORE `helm upgrade --install` -- see the same comment in
+    # helm/preview-dashboard/templates/serviceaccount.yaml for why this isn't
+    # templated in the chart (OpenShift's own service-account-controller
+    # fights Helm over ownership of .imagePullSecrets otherwise).
+    - oc create serviceaccount "$RELEASE_NAME" -n "$OPENSHIFT_NAMESPACE"
+        --dry-run=client -o yaml | oc apply -f -
+    - oc secrets link "$RELEASE_NAME" gitlab-pull-secret --for=pull -n "$OPENSHIFT_NAMESPACE"
+    - |
+      python3 - <<'PY'
+      import json
+      import os
+
+      sha = os.environ["CI_COMMIT_SHA"]
+      values = {
+          "image": {
+              "repository": os.environ["CI_REGISTRY_IMAGE"],
+              "tag": sha,
+          },
+          "env": {
+              "commitSha": sha,
+              "mrReleaseId": os.environ["RELEASE_NAME"],
+              "appVersion": sha,
+              "environment": "production",
+          },
+      }
+      with open("dashboard-values.json", "w") as f:
+          json.dump(values, f)
+      PY
+    - helm upgrade --install "$RELEASE_NAME" ./helm/preview-dashboard
+        --namespace "$OPENSHIFT_NAMESPACE"
+        -f dashboard-values.json
+        --wait --timeout 5m
+    - |
+      HOST=$(oc get route "$RELEASE_NAME" -n "$OPENSHIFT_NAMESPACE" -o jsonpath='{.spec.host}')
+      echo "Dashboard deployed: https://$HOST"

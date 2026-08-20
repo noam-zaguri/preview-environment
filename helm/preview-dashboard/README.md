@@ -64,15 +64,23 @@ of going `Running`.
    oc create token preview-ci -n previews --duration=8760h   # -> OPENSHIFT_TOKEN
    ```
 
-3. **GHCR personal access token** — images are pushed to GitHub Container
-   Registry (`ghcr.io`) and pulled by the cluster from there. The workflow's
-   own `GITHUB_TOKEN` can push (job-scoped, expires when the job ends), but
-   the cluster needs a long-lived credential to pull later, so create a
-   classic PAT with `read:packages` and store it as `GHCR_PAT` below. If the
-   package is private, also make sure that PAT's owner (or the repo) has
-   access to it.
+3. **Registry pull credential** — the job that pushes the image can push
+   using its own short-lived CI token, but the cluster needs a long-lived
+   credential to pull later, since that token expires when the job ends.
+   - **GitHub**: create a classic PAT with `read:packages`, store as `GHCR_PAT`.
+   - **GitLab**: create a project Deploy Token (Settings → Repository → Deploy
+     tokens) scoped to `read_registry`, store its username/token as
+     `REGISTRY_PULL_USERNAME` / `REGISTRY_PULL_TOKEN`.
 
-## GitHub repo configuration
+   If the package is private, also make sure that credential's owner (or the
+   repo/project) has access to it.
+
+## CI/CD configuration
+
+Pick whichever pipeline matches where this repo is hosted — both do the same
+thing (build, push, link the pull secret, `helm upgrade --install`).
+
+### GitHub Actions (`.github/workflows/deploy-dashboard.yml`)
 
 | Name | Type | Value |
 |---|---|---|
@@ -82,9 +90,22 @@ of going `Running`.
 | `GHCR_PAT` | secret | PAT from step 3, used as the cluster's GHCR pull credential |
 | `OPENSHIFT_NAMESPACE` | variable | `previews` (or whatever you named it in step 1) |
 
-With those set, `.github/workflows/deploy-dashboard.yml` deploys/updates the
-`preview-environment` release automatically on every push to `main` (or via a
-manual `workflow_dispatch` run).
+Deploys/updates the `preview-environment` release automatically on every push
+to `main` (or via a manual `workflow_dispatch` run).
+
+### GitLab CI/CD (`.gitlab-ci.yml`)
+
+| Name | Type | Value |
+|---|---|---|
+| `OPENSHIFT_SERVER` | variable (masked) | cluster API URL |
+| `OPENSHIFT_TOKEN` | variable (masked) | token from the `preview-ci` ServiceAccount above |
+| `REGISTRY_PULL_USERNAME` | variable | Deploy Token username from step 3 |
+| `REGISTRY_PULL_TOKEN` | variable (masked) | Deploy Token value from step 3 |
+| `OPENSHIFT_NAMESPACE` | variable | `previews` (or whatever you named it in step 1) |
+
+Set under Settings → CI/CD → Variables. Deploys/updates the
+`preview-environment` release on every push to the default branch, and can
+also be re-run manually via "Run pipeline" in the GitLab UI.
 
 ## Manual install (for testing outside CI)
 
